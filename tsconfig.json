@@ -1,0 +1,14 @@
+{
+    "extends": "@tsconfig/node20/tsconfig.json",
+    "compilerOptions": {
+        "experimentalDecorators": true,
+        "emitDecoratorMetadata": true,
+        "declaration": true,
+        "skipDefaultLibCheck": true,
+        "skipLibCheck": true,
+        "lib": ["esnext"], // Change to a valid ECMAScript version
+        "module": "CommonJS", // Change to a valid module system
+        "target": "esnext", // Change to a valid ECMAScript target version
+        "moduleResolution": "Node" // Change to a valid module resolution strategy
+    }
+}

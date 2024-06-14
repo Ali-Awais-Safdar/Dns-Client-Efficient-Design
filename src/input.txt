@@ -1,0 +1,3 @@
+carbonteq.com MX
+www.abc.com CNAME
+google.com A

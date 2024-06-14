@@ -1,0 +1,12 @@
+
+Transaction ID: 41253	Question: carbonteq.com. 	Answer: aspmx.l.google.com.
+
+Transaction ID: 50417	Question: www.abc.com. 	Answer: d2iwv1xxkqpmiz.cloudfront.net.
+
+Transaction ID: 24311	Question: google.com. 	Answer: 142.250.70.78
+
+Transaction ID: 49597	Question: carbonteq.com. 	Answer: aspmx.l.google.com.
+
+Transaction ID: 49098	Question: www.abc.com. 	Answer: d2iwv1xxkqpmiz.cloudfront.net.
+
+Transaction ID: 17296	Question: google.com. 	Answer: 172.217.174.238

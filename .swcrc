@@ -1,0 +1,21 @@
+{
+	"$schema": "https://json.schemastore.org/swcrc",
+	"isModule": true,
+	"jsc": {
+		"preserveAllComments": true,
+		"parser": {
+			"syntax": "typescript",
+			"dynamicImport": false,
+			"decorators": true,
+			"dts": true
+		},
+		"transform": { "decoratorMetadata": true },
+		"target": "es2022",
+		"loose": true,
+		"externalHelpers": true,
+		// Requires v1.2.50 or upper and requires target to be es2016 or upper.
+		"keepClassNames": false
+	},
+	"minify": false,
+	"sourceMaps": true
+}
