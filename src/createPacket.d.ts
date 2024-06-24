@@ -6,7 +6,6 @@ declare class DNSPacket {
     constructor(domain: string, queryType: string);
     static generateIdentifier(): Buffer;
     getBuffer(): Buffer;
-    static calculateQuestionLength: (buffer: Buffer, offset: number) => number;
     static decodePacket(buffer: Buffer): {
         header: {
             transactionID: number;
