@@ -1,5 +1,32 @@
 import * as crypto from 'crypto';
 
+enum QueryType {
+    A = 1,
+    AAAA = 28,
+    CNAME = 5,
+    MX = 15,
+}
+
+class Offset {
+    private offset: number;
+
+    constructor(initialOffset: number) {
+        this.offset = initialOffset;
+    }
+
+    get value(): number {
+        return this.offset;
+    }
+
+    update(value: number) {
+        this.offset = value;
+    }
+
+    increment(value: number) {
+        this.offset += value;
+    }
+}
+
 class DNSHeader {
     private flags: Buffer;
     private questionCount: Buffer;
@@ -16,12 +43,6 @@ class DNSHeader {
         this.additionalRR = Buffer.from([0x00, 0x00]); // No additional resource records
     }
 
-    // incrementQuestionCount() {
-    //     let count = this.questionCount.readUInt16BE(0);
-    //     count++;
-    //     this.questionCount.writeUInt16BE(count, 0);
-    // }
-
     concatBuffers(): Buffer {
         return Buffer.concat([
             this.id,
@@ -33,18 +54,18 @@ class DNSHeader {
         ]);
     }
 
-    static decodeHeader(buffer: Buffer) {
+    static decodeHeader(buffer: Buffer, offset: Offset) {
         if (buffer.length < 12) {
             throw new Error("Invalid DNS header length");
         }
         const header = {
-            transactionID: buffer.readUInt16BE(0),
-            questionsCount: buffer.readUInt16BE(4),
-            answersCount: buffer.readUInt16BE(6),
-            authorityCount: buffer.readUInt16BE(8),
-            additionalCount: buffer.readUInt16BE(10),
+            transactionID: buffer.readUInt16BE(offset.value),
+            questionsCount: buffer.readUInt16BE(offset.value + 4),
+            answersCount: buffer.readUInt16BE(offset.value + 6),
+            authorityCount: buffer.readUInt16BE(offset.value + 8),
+            additionalCount: buffer.readUInt16BE(offset.value + 10),
         };
-
+        offset.increment(12); // Update offset after reading the header
         return header;
     }
 
@@ -95,36 +116,36 @@ class DNSQuestion {
         return Buffer.concat([...buffers, Buffer.from([0])]);
     }
 
-    static parseDomainName(buffer: Buffer, offset: number) {
+    static parseDomainName(buffer: Buffer, offset: Offset) {
         let name = ''
         let hasEncounteredPointer = false
-        let originalOffset = offset
+        let originalOffset = offset.value
       
         while (true) {
-          const lengthByte = buffer[offset] // This is the prefix byte indicating the length of the label
+          const lengthByte = buffer[offset.value] // This is the prefix byte indicating the length of the label
       
           if (isEndOfName(lengthByte)) {
-            offset = offset + 1 // Move past the null byte indicating the end of the name
+            offset.increment(1); // Move past the null byte indicating the end of the name
             break
           }
       
           if (isPointerIndicator(lengthByte)) {
             if (!hasEncounteredPointer) {
-              originalOffset = offset + 2 // Set originalOffset to position after the pointer
+              originalOffset = offset.value + 2; // Set originalOffset to position after the pointer
               hasEncounteredPointer = true
             }
-            offset = calculatePointerOffset(lengthByte, buffer, offset)
+            offset.update(calculatePointerOffset(lengthByte, buffer, offset.value))
             continue
           }
       
           const label = readLabel(buffer, offset, lengthByte)
           name = name + label + '.' // Append label and a dot to the name
-          offset = offset + lengthByte + 1 // Update offset to the position after the current label
+          offset.increment(lengthByte + 1); // Update offset to the position after the current label
         }
     
         return {
           domainName: name,
-          newOffset: hasEncounteredPointer ? originalOffset : offset,
+          newOffset: hasEncounteredPointer ? originalOffset : offset.value,
         }
         function isEndOfName(lengthByte: number) {
             // The end of the domain name is indicated by a null byte (0x00).
@@ -147,10 +168,10 @@ class DNSQuestion {
             // The first two simply indicate that it is a pointer.
             return ((lengthByte & 0x3f) << 8) | buffer[currentOffset + 1]
           }
-          function readLabel(buffer: Buffer, offset: number, length: number) {
+          function readLabel(buffer: Buffer, offset: Offset, length: number) {
             // The offset points to the length byte of the label in the buffer.
             // Therefore, the actual label starts 1 byte after the offset.
-            const startOfLabel = offset + 1
+            const startOfLabel = offset.value + 1
           
             // The end of the label is calculated by adding the length of the label
             // to the starting position. The length specifies how many characters
@@ -163,53 +184,51 @@ class DNSQuestion {
           }
     }
 
-    static decodeQuestion(buffer: Buffer, offset: number) {
+    static decodeQuestion(buffer: Buffer, offset: Offset) {
         const domainNameData = DNSQuestion.parseDomainName(buffer, offset);
-        const type = Buffer.from([buffer[offset + domainNameData.domainName.length + 1], buffer[offset + domainNameData.domainName.length + 2]]);
+        const type = Buffer.from([buffer[offset.value], buffer[offset.value + 1]]);
+        offset.increment(4); // Update offset after reading the question
         return { domainName: domainNameData.domainName, type: type.readUInt16BE(0)};
     }
 }
 
 class DNSAnswer {
-    static decodeAnswer(buffer: Buffer, offset: number) {
+    static decodeAnswer(buffer: Buffer, offset: Offset) {
         const domainNameData = DNSQuestion.parseDomainName(buffer, offset);
-        offset = domainNameData.newOffset;
-        const type = buffer.readUInt16BE(offset);
-        offset += 2 // Move past the type field
-        offset += 2 // Skip class field (2 bytes)
-        offset += 4 // Skip TTL field (4 bytes)
+        offset.update(domainNameData.newOffset);
+        const type = buffer.readUInt16BE(offset.value);
+        offset.increment(2); // Move past the type field
+        offset.increment(2); // Skip class field (2 bytes)
+        offset.increment(4); // Skip TTL field (4 bytes)
 
-        const dataLength = buffer.readUInt16BE(offset)
-        offset += 2 // Move past the data length field
+        const dataLength = buffer.readUInt16BE(offset.value);
+        offset.increment(2); // Move past the data length field
 
-        let rdata: string
+        let rdata: string;
 
-        if (type === 5) {
-            const { domainName, newOffset } = DNSQuestion.parseDomainName(buffer, offset)
-            offset = newOffset
-            rdata = domainName
-        }else if (type === 15) {
-            // Handle MX record (type 15)
-            offset += 2; // Move past the preference field
+        if (type === QueryType.CNAME) {
+            const { domainName, newOffset } = DNSQuestion.parseDomainName(buffer, offset);
+            offset.update(newOffset);
+            rdata = domainName;
+        } else if (type === QueryType.MX) {
+            offset.increment(2); // Move past the preference field
             const { domainName, newOffset } = DNSQuestion.parseDomainName(buffer, offset);
             rdata = domainName;
-            offset = newOffset;
-        } 
-        else {
-            const rdataBuffer = Buffer.from(buffer.subarray(offset, offset + dataLength));
-            rdata = DNSAnswer.interpretRData(rdataBuffer, type)
-            offset += dataLength // Update offset to the end of rdata
+            offset.update(newOffset);
+        } else {
+            const rdataBuffer = Buffer.from(buffer.subarray(offset.value, offset.value + dataLength));
+            rdata = DNSAnswer.interpretRData(rdataBuffer, type);
+            offset.increment(dataLength); // Update offset to the end of rdata
         }
 
-        return { domainName: domainNameData.domainName, type, rdata , offset};
+        return { domainName: domainNameData.domainName, type, rdata, offset: offset.value };
     }
-    
 
     static interpretRData(rdata: Buffer, type: number): string {
         switch (type) {
-            case 1:
+            case QueryType.A:
                 return DNSAnswer.interpretIPv4Address(rdata);
-            case 28:
+            case QueryType.AAAA:
                 return DNSAnswer.interpretIPv6Address(rdata);
             default:
                 return '';
@@ -246,95 +265,18 @@ class DNSPacket {
     }
 
     static generateIdentifier() {
-        return crypto.randomBytes(2) // Generates a 2-byte (16-bit) buffer
-      }
-
-    // constructor(domain: string, queryType: string) {
-    //     this.header = new DNSHeader();
-    //     this.questions = [new DNSQuestion(domain, queryType)];
-    //     const identifier = DNSPacket.generateIdentifier();
-    //     this.buffer = Buffer.concat([
-    //         identifier,
-    //         this.header.concatBuffers(),
-    //         ...this.questions.map(question => question.concatBuffers())
-    //     ]);
-    // }
-
-    // addQuestion(domain: string, queryType: string) {
-    //     const newQuestion = new DNSQuestion(domain, queryType);
-    //     this.questions.push(newQuestion);
-    //     this.header.incrementQuestionCount();
-    //     this.updateBuffer();
-    // }
-
-    // updateBuffer() {
-    //     const identifier = this.buffer.slice(0, 2);
-    //     this.buffer = Buffer.concat([
-    //         identifier,
-    //         this.header.concatBuffers(),
-    //         ...this.questions.map(question => question.concatBuffers())
-    //     ]);
-    // }
-
-    // static decodePacket(buffer: Buffer) {
-    //     const header = DNSHeader.decodeHeader(buffer);
-    //     const questions = [];
-    //     let offset = 12; // After the header
-    //     console.log(header)
-
-    //     for (let i = 0; i < header.questionsCount; i++) {
-    //         console.log(offset)
-    //         const question = DNSQuestion.decodeQuestion(buffer, offset);
-    //         console.log(question)
-    //         questions.push(question);
-    //         offset += question.domainName.length + 5; // Domain name length + type (2 bytes) + class (2 bytes)
-    //     }
-    //     console.log(questions)
-
-    //     const answers = [];
-    //     while (offset < buffer.length) {
-    //         const answer = DNSAnswer.decodeAnswer(buffer, offset);
-    //         answers.push(answer);
-    //         offset = answer.offset;
-    //     }
-
-    //     return { header, questions, answers };
-    // }
-    //As even if we give 2 qs the server resolves only the first one im commenting out this functionality
+        return crypto.randomBytes(2); // Generates a 2-byte (16-bit) buffer
+    }
 
     getBuffer(): Buffer {
         return this.buffer;
     }
 
-    static calculateQuestionLength = (buffer : Buffer, offset : number) => {
-        let length = 0;
-        
-        // Start from the offset
-        let currentOffset = offset;
-    
-        // Read the domain name labels until a pointer (00) is encountered
-        while (buffer[currentOffset] !== 0) {
-            // Read the length of the label
-            const labelLength = buffer[currentOffset];
-            // Move to the next label
-            currentOffset += labelLength + 1; // Length of label + 1 byte for the length field
-            // Increment the total length
-            length += labelLength + 1; // Length of label + 1 byte for the length field
-        }
-    
-        // Skip the pointer (00) in the domain name
-        length += 1;
-    
-        // Skip the type field (2 bytes) and class field (2 bytes)
-        length += 4;
-    
-        return length;
-    };
-
     static decodePacket(buffer: Buffer) {
-        const header = DNSHeader.decodeHeader(buffer);
-        const question = DNSQuestion.decodeQuestion(buffer, 12);
-        const answer = DNSAnswer.decodeAnswer(buffer,DNSPacket.calculateQuestionLength(buffer, 12) + 12);
+        const offset = new Offset(0);
+        const header = DNSHeader.decodeHeader(buffer, offset);
+        const question = DNSQuestion.decodeQuestion(buffer, offset);
+        const answer = DNSAnswer.decodeAnswer(buffer, offset);
         return { header, question, answer };
     }
 
@@ -344,4 +286,3 @@ class DNSPacket {
 }
 
 export { DNSPacket }
-
