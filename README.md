@@ -21,10 +21,6 @@ Dns-Client-Efficient-Design is a DNS query client designed to efficiently handle
     ```
     cd Dns-Client-Efficient-Design
     ```
-3. Install dependencies:
-    ```
-    npm install
-    ```
 
 ## Usage
 
