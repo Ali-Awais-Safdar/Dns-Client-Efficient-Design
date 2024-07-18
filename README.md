@@ -45,9 +45,9 @@ The output will be displayed in the console by default. If a file input is provi
 
 ## File Structure
 
-'userInterface.ts': Main entry point for handling user input and output.
-'outputLayer.ts': Defines interfaces and classes for output handling (console and file).
-'inputLayer.ts': Defines interfaces and classes for input handling (console and file).
-'persistanceLayer.ts': Manages storage of transaction IDs and responses.
-'transportLayer.ts': Handles sending DNS queries.
-'createPacket.ts': Defines DNS packet creation and decoding.
+- 'userInterface.ts': Main entry point for handling user input and output.
+- 'outputLayer.ts': Defines interfaces and classes for output handling (console and file).
+- 'inputLayer.ts': Defines interfaces and classes for input handling (console and file).
+- 'persistanceLayer.ts': Manages storage of transaction IDs and responses.
+- 'transportLayer.ts': Handles sending DNS queries.
+- 'createPacket.ts': Defines DNS packet creation and decoding.
